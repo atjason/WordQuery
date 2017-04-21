@@ -19,6 +19,9 @@
 
 import inspect
 import os
+# use ntpath module to ensure the windows-style (e.g. '\\LDOCE.css')
+# path can be processed on Unix platform.
+import ntpath
 import re
 from collections import defaultdict
 from functools import wraps
@@ -29,6 +32,14 @@ from wquery.context import config
 from wquery.libs.mdict.mdict_query import IndexBuilder
 from wquery.libs.pystardict import Dictionary
 from wquery.utils import MapDict
+
+
+def register(label):
+    """register the dict service with a label, which will be shown in the dicts list."""
+    def _deco(cls):
+        cls.__register_label__ = label
+        return cls
+    return _deco
 
 
 def export(label, index):
@@ -160,11 +171,11 @@ class MdxService(LocalService):
     def title(self):
         if self.builder:
             if config.use_filename() or not self.builder._title or self.builder._title.startswith('Title'):
-                return os.path.splitext(os.path.basename(self.dict_path))[0]
+                return os.path.splitext(ntpath.basename(self.dict_path))[0]
             else:
                 return self.builder._title
         else:
-            return os.path.splitext(os.path.basename(self.dict_path))[0]
+            return os.path.splitext(ntpath.basename(self.dict_path))[0]
 
     def index(self):
         try:
@@ -234,7 +245,7 @@ class MdxService(LocalService):
         diff = data.difference(self.cache['files'])
         self.cache['files'].update(diff)
         lst, errors, styles = list(), list(), list()
-        wild = ['*' + os.path.basename(each) for each in diff]
+        wild = ['*' + ntpath.basename(each) for each in diff]
         try:
             for each in wild:
                 keys = self.builder.get_mdd_keys(each)
@@ -242,19 +253,20 @@ class MdxService(LocalService):
                     errors.append(each)
                 lst.extend(keys)
             for each in lst:
+                basename = ntpath.basename(each)
+                saved_basename = '_' + basename
                 try:
                     bytes_list = self.builder.mdd_lookup(each)
                     if bytes_list:
                         savepath = os.path.join(
-                            mw.col.media.dir(), '_' + os.path.basename(each))
-                        if os.path.basename(each).endswith('.css') or os.path.basename(each).endswith('.js'):
-                            styles.append('_' + os.path.basename(each))
+                            mw.col.media.dir(), saved_basename)
+                        if basename.endswith('.css') or basename.endswith('.js'):
+                            styles.append(saved_basename)
                         if not os.path.exists(savepath):
                             with open(savepath, 'wb') as f:
                                 f.write(bytes_list[0])
                 except sqlite3.OperationalError as e:
                     showInfo(str(e))
-            # showInfo(str(styles))
         except AttributeError:
             '''
             有些字典会出这样的错误u AttributeError: 'IndexBuilder' object has no attribute '_mdd_db'
@@ -278,7 +290,7 @@ class StardictService(LocalService):
     @property
     def title(self):
         if config.use_filename() or not self.builder.ifo.bookname:
-            return os.path.splitext(os.path.basename(self.dict_path))[0]
+            return os.path.splitext(ntpath.basename(self.dict_path))[0]
         else:
             return self.builder.ifo.bookname.decode('utf-8')
 
@@ -320,19 +332,3 @@ class QueryResult(MapDict):
     @classmethod
     def default(cls):
         return QueryResult(result="")
-
-
-def register(label):
-    """register the dict service with a label, which will be shown in the dicts list."""
-    def _deco(cls):
-        return _deco
-    cls.__register_label__ = label
-    return cls
-
-
-if __name__ == '__main__':
-    from youdao import Youdao
-    yd = Youdao()
-    flds = yd.get_export_flds()
-    for each in flds:
-        print each.export_fld_label
